@@ -313,7 +313,7 @@
         closeModalBtn.addEventListener('click', closeModal);
         cancelModalBtn.addEventListener('click', closeModal);
 
-        // 画像選択・AI解析処理（リサイズ処理を追加して安定化）
+        // 画像選択・AI解析処理
         receiptImageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -323,8 +323,8 @@
                 const img = new Image();
                 img.onload = async function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 1000;
-                    const MAX_HEIGHT = 1000;
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
                     let width = img.width;
                     let height = img.height;
 
@@ -345,7 +345,7 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
 
-                    const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
                     currentImageBase64 = resizedDataUrl.split(',')[1];
                     imagePreview.src = resizedDataUrl;
                     uploadPlaceholder.classList.add('hidden');
@@ -369,13 +369,14 @@
 
         async function analyzeReceiptWithAI(base64Data) {
             aiLoading.classList.remove('hidden');
-            const prompt = "このレシート画像から次の情報を抽出し、必ず指定されたJSONフォーマットのみで返してください。余計なマークダウンやテキストは一切含めないでください。{" +
-                "\"purchaseDate\": \"YYYY-MM-DD形式の購入日 (不明な場合は今日)\"," +
-                "\"companyName\": \"会社名・店舗名\"," +
-                "\"itemName\": \"商品名または品目要約\"," +
-                "\"amount\": 支払総額の数値のみ," +
-                "\"receiptNo\": \"レシート番号やインボイス番号 (ない場合は空文字)\"" +
-            "}";
+            const prompt = "このレシート画像から次の情報を抽出し、必ず純粋なJSON形式のみで出力してください（マークダウンの```jsonやバッククォート、説明文は一切含めないでください）。\n" +
+                "{\n" +
+                "  \"purchaseDate\": \"YYYY-MM-DD形式の購入日 (不明な場合は今日)\",\n" +
+                "  \"companyName\": \"会社名・店舗名\",\n" +
+                "  \"itemName\": \"主な商品名・品目要約\",\n" +
+                "  \"amount\": 支払総額の数値のみ（カンマなし）,\n" +
+                "  \"receiptNo\": \"レシート番号やインボイス番号 (ない場合は空文字)\"\n" +
+                "}";
 
             let success = false;
             let resultData = null;
@@ -387,7 +388,6 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [{
-                                role: 'user',
                                 parts: [
                                     { text: prompt },
                                     { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
@@ -398,7 +398,6 @@
                     const data = await response.json();
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (text) {
-                        // JSON部分の抽出（コードブロックが含まれる場合にも対応）
                         const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
                         const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
                         if (jsonMatch) {
@@ -408,7 +407,7 @@
                         }
                     }
                 } catch (err) {
-                    console.error(err);
+                    console.error("AI解析エラー:", err);
                 }
                 await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
             }
