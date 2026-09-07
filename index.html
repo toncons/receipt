@@ -280,7 +280,7 @@
             syncSheetBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 送信中...';
 
             try {
-                const response = await fetch(sheetIntegrationUrl, {
+                await fetch(sheetIntegrationUrl, {
                     method: 'POST',
                     mode: 'no-cors',
                     headers: { 'Content-Type': 'application/json' },
@@ -313,8 +313,8 @@
         closeModalBtn.addEventListener('click', closeModal);
         cancelModalBtn.addEventListener('click', closeModal);
 
-        // 画像選択・AI解析処理
-        receiptImageInput.addEventListener('change', async (e) => {
+        // 画像選択・AI解析処理 (プロフェッショナルリファイン版)
+        receiptImageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
@@ -323,8 +323,8 @@
                 const img = new Image();
                 img.onload = async function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800;
-                    const MAX_HEIGHT = 800;
+                    const MAX_WIDTH = 1024;
+                    const MAX_HEIGHT = 1024;
                     let width = img.width;
                     let height = img.height;
 
@@ -345,7 +345,7 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
 
-                    const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     currentImageBase64 = resizedDataUrl.split(',')[1];
                     imagePreview.src = resizedDataUrl;
                     uploadPlaceholder.classList.add('hidden');
@@ -369,12 +369,13 @@
 
         async function analyzeReceiptWithAI(base64Data) {
             aiLoading.classList.remove('hidden');
-            const prompt = "このレシート画像から次の情報を抽出し、必ず純粋なJSON形式のみで出力してください（マークダウンの```jsonやバッククォート、説明文は一切含めないでください）。\n" +
+            const systemPrompt = "あなたは優秀な経理アシスタントです。レシート画像から正確に情報を抽出してください。";
+            const userPrompt = "このレシート画像から次の情報を読み取り、必ず以下のJSONフォーマットのみで返してください（余計な文字やマークダウンは一切含めないでください）。\n" +
                 "{\n" +
                 "  \"purchaseDate\": \"YYYY-MM-DD形式の購入日 (不明な場合は今日)\",\n" +
                 "  \"companyName\": \"会社名・店舗名\",\n" +
-                "  \"itemName\": \"主な商品名・品目要約\",\n" +
-                "  \"amount\": 支払総額の数値のみ（カンマなし）,\n" +
+                "  \"itemName\": \"主な商品名または品目要約\",\n" +
+                "  \"amount\": 支払総額の数値のみ（カンマや円マークなし）,\n" +
                 "  \"receiptNo\": \"レシート番号やインボイス番号 (ない場合は空文字)\"\n" +
                 "}";
 
@@ -387,16 +388,26 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            systemInstruction: {
+                                parts: [{ text: systemPrompt }]
+                            },
                             contents: [{
+                                role: 'user',
                                 parts: [
-                                    { text: prompt },
+                                    { text: userPrompt },
                                     { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
                                 ]
                             }]
                         })
                     });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
                     const data = await response.json();
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
                     if (text) {
                         const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
                         const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
@@ -407,7 +418,7 @@
                         }
                     }
                 } catch (err) {
-                    console.error("AI解析エラー:", err);
+                    console.error(`AI解析試行 ${attempt + 1} 失敗:`, err);
                 }
                 await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
             }
@@ -421,7 +432,7 @@
                 if (resultData.amount) document.getElementById('amount').value = resultData.amount;
                 if (resultData.receiptNo) document.getElementById('receiptNo').value = resultData.receiptNo;
             } else {
-                showAlert('レシートの自動読み取りに失敗しました。手動で入力してください。');
+                showAlert('レシートの自動読み取りに失敗しました。手動で内容を入力してください。');
             }
         }
 
@@ -531,7 +542,7 @@
             URL.revokeObjectURL(url);
         });
 
-        // render initial view
+        // 初期描画
         renderTable();
     </script>
 </body>
