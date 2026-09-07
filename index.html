@@ -313,19 +313,47 @@
         closeModalBtn.addEventListener('click', closeModal);
         cancelModalBtn.addEventListener('click', closeModal);
 
-        // 画像選択・AI解析処理
+        // 画像選択・AI解析処理（リサイズ処理を追加して安定化）
         receiptImageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = async function(event) {
-                currentImageBase64 = event.target.result.split(',')[1];
-                imagePreview.src = event.target.result;
-                uploadPlaceholder.classList.add('hidden');
-                imagePreviewContainer.classList.remove('hidden');
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = async function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1000;
+                    const MAX_HEIGHT = 1000;
+                    let width = img.width;
+                    let height = img.height;
 
-                await analyzeReceiptWithAI(currentImageBase64);
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const resizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    currentImageBase64 = resizedDataUrl.split(',')[1];
+                    imagePreview.src = resizedDataUrl;
+                    uploadPlaceholder.classList.add('hidden');
+                    imagePreviewContainer.classList.remove('hidden');
+
+                    await analyzeReceiptWithAI(currentImageBase64);
+                };
+                img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         });
@@ -341,7 +369,7 @@
 
         async function analyzeReceiptWithAI(base64Data) {
             aiLoading.classList.remove('hidden');
-            const prompt = "このレシート画像から次の情報を抽出し、必ず指定されたJSONフォーマットのみで返してください。余計なテキストは含めないでください。{" +
+            const prompt = "このレシート画像から次の情報を抽出し、必ず指定されたJSONフォーマットのみで返してください。余計なマークダウンやテキストは一切含めないでください。{" +
                 "\"purchaseDate\": \"YYYY-MM-DD形式の購入日 (不明な場合は今日)\"," +
                 "\"companyName\": \"会社名・店舗名\"," +
                 "\"itemName\": \"商品名または品目要約\"," +
@@ -370,7 +398,9 @@
                     const data = await response.json();
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (text) {
-                        const jsonMatch = text.match(/\{[\s\S]*\}/);
+                        // JSON部分の抽出（コードブロックが含まれる場合にも対応）
+                        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                        const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
                         if (jsonMatch) {
                             resultData = JSON.parse(jsonMatch[0]);
                             success = true;
