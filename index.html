@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レシート管理アプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+    <!-- ヘッダー -->
+    <header class="bg-indigo-600 text-white shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-receipt"></i> レシート管理アプリ
+            </h1>
+            <div class="flex items-center gap-2">
+                <button id="openSettingsBtn" class="bg-indigo-700 text-white px-3 py-2 rounded-lg font-medium shadow hover:bg-indigo-800 transition flex items-center gap-1.5 text-sm">
+                    <i class="fa-solid fa-gear"></i> 設定
+                </button>
+                <button id="openModalBtn" class="bg-white text-indigo-600 px-4 py-2 rounded-lg font-medium shadow hover:bg-indigo-50 transition flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-camera"></i> レシート登録
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="max-w-4xl mx-auto px-4 py-6">
+        <!-- サマリー・検索セクション -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <p class="text-xs text-slate-500 font-medium">登録レシート数</p>
+                <p id="totalCount" class="text-2xl font-bold text-indigo-600 mt-1">0件</p>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <p class="text-xs text-slate-500 font-medium">合計金額</p>
+                <p id="totalAmount" class="text-2xl font-bold text-emerald-600 mt-1">¥0</p>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center">
+                <div class="w-full space-y-2">
+                    <p class="text-xs text-slate-500 font-medium">スプレッドシート連携</p>
+                    <div class="flex gap-2">
+                        <button id="exportCsvBtn" class="flex-1 bg-emerald-50 text-emerald-700 border border-emerald-200 py-1.5 px-2 rounded text-xs font-medium hover:bg-emerald-100 transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-file-excel"></i> CSV出力
+                        </button>
+                        <button id="syncSheetBtn" class="flex-1 bg-indigo-50 text-indigo-700 border border-indigo-200 py-1.5 px-2 rounded text-xs font-medium hover:bg-indigo-100 transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> 連携送信
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 一覧表示 -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h2 class="font-bold text-slate-700">登録済みレシート一覧</h2>
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="会社名や商品名で検索..." class="pl-8 pr-4 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <i class="fa-solid fa-search absolute left-2.5 top-2.5 text-slate-400 text-sm"></i>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-100">
+                            <th class="p-3">日付</th>
+                            <th class="p-3">会社名</th>
+                            <th class="p-3">商品名</th>
+                            <th class="p-3">金額</th>
+                            <th class="p-3">レシート番号</th>
+                            <th class="p-3 text-right">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptTableBody" class="divide-y divide-slate-100 text-sm">
+                        <!-- 動的に挿入 -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="emptyState" class="p-8 text-center text-slate-400 hidden">
+                <i class="fa-solid fa-folder-open text-4xl mb-2"></i>
+                <p>レシートデータがありません。「レシート登録」から追加してください。</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- 設定モーダル（スプレッドシート連携URL設定） -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                    <i class="fa-solid fa-gear text-indigo-600"></i> スプレッドシート連携設定
+                </h3>
+                <button id="closeSettingsBtn" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Googleスプレッドシート / GAS 連携URL</label>
+                    <input type="url" id="sheetUrlInput" placeholder="https://script.google.com/macros/s/.../exec" class="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                        Google Apps Script (GAS) などのWebアプリURLを入力すると、このアプリから直接データをスプレッドシートへ送信できます。
+                    </p>
+                </div>
+                <div id="openSheetLinkContainer" class="hidden">
+                    <a id="openSheetLink" href="#" target="_blank" class="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                        <i class="fa-solid fa-external-link-alt"></i> 登録済みのスプレッドシート/URLを開く
+                    </a>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+                <button id="cancelSettingsBtn" class="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">キャンセル</button>
+                <button id="saveSettingsBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">設定を保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 登録モーダル -->
+    <div id="receiptModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-700 flex items-center gap-2">
+                    <i class="fa-solid fa-camera text-indigo-600"></i> レシート登録・AI解析
+                </h3>
+                <button id="closeModalBtn" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-4 flex-1">
+                <!-- カメラ/画像アップロード -->
+                <div class="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:border-indigo-500 transition cursor-pointer relative" id="dropZone">
+                    <input type="file" id="receiptImageInput" accept="image/*" capture="environment" class="absolute inset-0 opacity-0 cursor-pointer">
+                    <div id="uploadPlaceholder">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-indigo-500 mb-2"></i>
+                        <p class="text-sm font-medium text-slate-700">タップしてレシートを撮影・選択</p>
+                        <p class="text-xs text-slate-400 mt-1">カメラで撮影するとAIが自動で内容を読み取ります</p>
+                    </div>
+                    <div id="imagePreviewContainer" class="hidden relative">
+                        <img id="imagePreview" class="max-h-40 mx-auto rounded-lg shadow-sm object-contain">
+                        <button type="button" id="removeImageBtn" class="absolute top-1 right-1 bg-slate-800/70 text-white rounded-full p-1 text-xs hover:bg-slate-800">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ローディング表示 -->
+                <div id="aiLoading" class="hidden text-center py-4 text-indigo-600">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-1"></i>
+                    <p class="text-xs">AIがレシートを解析中...</p>
+                </div>
+
+                <!-- 入力フォーム -->
+                <form id="receiptForm" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">購入日付</label>
+                        <input type="date" id="purchaseDate" required class="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">会社名 (店舗名)</label>
+                        <input type="text" id="companyName" placeholder="例: 株式会社〇〇商店" required class="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">商品名 (主な品目)</label>
+                        <input type="text" id="itemName" placeholder="例: 事務用品代" required class="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">金額 (円)</label>
+                        <input type="number" id="amount" placeholder="例: 1280" required class="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">レシート番号 (インボイス番号等)</label>
+                        <input type="text" id="receiptNo" placeholder="例: T1234567890123" class="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    </div>
+                </form>
+            </div>
+
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+                <button id="cancelModalBtn" class="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition">キャンセル</button>
+                <button id="saveReceiptBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">保存する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- メッセージ通知用モーダル -->
+    <div id="alertModal" class="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-lg p-5 max-w-sm w-full text-center">
+            <p id="alertMessage" class="text-sm text-slate-700 mb-4"></p>
+            <button id="alertCloseBtn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm w-full">OK</button>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = "";
+        let receipts = JSON.parse(localStorage.getItem('receipts_data') || '[]');
+        let sheetIntegrationUrl = localStorage.getItem('sheet_integration_url') || '';
+        let currentImageBase64 = null;
+
+        // DOM Elements
+        const openModalBtn = document.getElementById('openModalBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const cancelModalBtn = document.getElementById('cancelModalBtn');
+        const receiptModal = document.getElementById('receiptModal');
+        const receiptForm = document.getElementById('receiptForm');
+        const saveReceiptBtn = document.getElementById('saveReceiptBtn');
+        const receiptTableBody = document.getElementById('receiptTableBody');
+        const totalCount = document.getElementById('totalCount');
+        const totalAmount = document.getElementById('totalAmount');
+        const emptyState = document.getElementById('emptyState');
+        const searchInput = document.getElementById('searchInput');
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+
+        // Settings Modal Elements
+        const openSettingsBtn = document.getElementById('openSettingsBtn');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const sheetUrlInput = document.getElementById('sheetUrlInput');
+        const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        const openSheetLinkContainer = document.getElementById('openSheetLinkContainer');
+        const openSheetLink = document.getElementById('openSheetLink');
+        const syncSheetBtn = document.getElementById('syncSheetBtn');
+
+        const receiptImageInput = document.getElementById('receiptImageInput');
+        const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const removeImageBtn = document.getElementById('removeImageBtn');
+        const aiLoading = document.getElementById('aiLoading');
+
+        // Alert Modal
+        function showAlert(msg) {
+            document.getElementById('alertMessage').innerText = msg;
+            document.getElementById('alertModal').classList.remove('hidden');
+        }
+        document.getElementById('alertCloseBtn').addEventListener('click', () => {
+            document.getElementById('alertModal').classList.add('hidden');
+        });
+
+        // Settings Modal Open/Close
+        openSettingsBtn.addEventListener('click', () => {
+            sheetUrlInput.value = sheetIntegrationUrl;
+            if (sheetIntegrationUrl) {
+                openSheetLink.href = sheetIntegrationUrl;
+                openSheetLinkContainer.classList.remove('hidden');
+            } else {
+                openSheetLinkContainer.classList.add('hidden');
+            }
+            settingsModal.classList.remove('hidden');
+        });
+
+        function closeSettings() {
+            settingsModal.classList.add('hidden');
+        }
+        closeSettingsBtn.addEventListener('click', closeSettings);
+        cancelSettingsBtn.addEventListener('click', closeSettings);
+
+        saveSettingsBtn.addEventListener('click', () => {
+            sheetIntegrationUrl = sheetUrlInput.value.trim();
+            localStorage.setItem('sheet_integration_url', sheetIntegrationUrl);
+            closeSettings();
+            showAlert('スプレッドシート連携URLを保存しました。');
+        });
+
+        // 連携送信ボタン
+        syncSheetBtn.addEventListener('click', async () => {
+            if (!sheetIntegrationUrl) {
+                showAlert('スプレッドシート連携URLが設定されていません。「設定」ボタンからURLを登録してください。');
+                return;
+            }
+            if (receipts.length === 0) {
+                showAlert('送信するデータがありません。');
+                return;
+            }
+
+            syncSheetBtn.disabled = true;
+            syncSheetBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 送信中...';
+
+            try {
+                // POST送信の例 (GASのWebアプリ想定)
+                const response = await fetch(sheetIntegrationUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // クロスドメイン対策
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipts })
+                });
+                showAlert('スプレッドシートへデータを送信しました。');
+            } catch (err) {
+                console.error(err);
+                showAlert('送信に失敗しました。URLを確認してください。');
+            } finally {
+                syncSheetBtn.disabled = false;
+                syncSheetBtn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 連携送信';
+            }
+        });
+
+        // Modal Open/Close
+        openModalBtn.addEventListener('click', () => {
+            receiptForm.reset();
+            currentImageBase64 = null;
+            imagePreview.src = '';
+            imagePreviewContainer.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+            document.getElementById('purchaseDate').value = new Date().toISOString().split('T')[0];
+            receiptModal.classList.remove('hidden');
+        });
+
+        function closeModal() {
+            receiptModal.classList.add('hidden');
+        }
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelModalBtn.addEventListener('click', closeModal);
+
+        // 画像選択・AI解析処理
+        receiptImageInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                currentImageBase64 = event.target.result.split(',')[1];
+                imagePreview.src = event.target.result;
+                uploadPlaceholder.classList.add('hidden');
+                imagePreviewContainer.classList.remove('hidden');
+
+                await analyzeReceiptWithAI(currentImageBase64);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        removeImageBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentImageBase64 = null;
+            receiptImageInput.value = '';
+            imagePreview.src = '';
+            imagePreviewContainer.classList.add('hidden');
+            uploadPlaceholder.classList.remove('hidden');
+        });
+
+        async function analyzeReceiptWithAI(base64Data) {
+            aiLoading.classList.remove('hidden');
+            const prompt = "このレシート画像から次の情報を抽出し、必ず指定されたJSONフォーマットのみで返してください。余計なテキストは含めないでください。{" +
+                "\"purchaseDate\": \"YYYY-MM-DD形式の購入日 (不明な場合は今日)\"," +
+                "\"companyName\": \"会社名・店舗名\"," +
+                "\"itemName\": \"商品名または品目要約\"," +
+                "\"amount\": 支払総額の数値のみ," +
+                "\"receiptNo\": \"レシート番号やインボイス番号 (ない場合は空文字)\"" +
+            "}";
+
+            let success = false;
+            let resultData = null;
+
+            for (let attempt = 0; attempt < 5; attempt++) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{
+                                role: 'user',
+                                parts: [
+                                    { text: prompt },
+                                    { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
+                                ]
+                            }]
+                        })
+                    });
+                    const data = await response.json();
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) {
+                        const jsonMatch = text.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            resultData = JSON.parse(jsonMatch[0]);
+                            success = true;
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
+                await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+            }
+
+            aiLoading.classList.add('hidden');
+
+            if (success && resultData) {
+                if (resultData.purchaseDate) document.getElementById('purchaseDate').value = resultData.purchaseDate;
+                if (resultData.companyName) document.getElementById('companyName').value = resultData.companyName;
+                if (resultData.itemName) document.getElementById('itemName').value = resultData.itemName;
+                if (resultData.amount) document.getElementById('amount').value = resultData.amount;
+                if (resultData.receiptNo) document.getElementById('receiptNo').value = resultData.receiptNo;
+            } else {
+                showAlert('レシートの自動読み取りに失敗しました。手動で入力してください。');
+            }
+        }
+
+        // 保存処理
+        saveReceiptBtn.addEventListener('click', () => {
+            const date = document.getElementById('purchaseDate').value;
+            const company = document.getElementById('companyName').value;
+            const item = document.getElementById('itemName').value;
+            const amount = document.getElementById('amount').value;
+            const receiptNo = document.getElementById('receiptNo').value;
+
+            if (!date || !company || !item || !amount) {
+                showAlert('必須項目をすべて入力してください。');
+                return;
+            }
+
+            const newReceipt = {
+                id: Date.now().toString(),
+                date,
+                company,
+                item,
+                amount: Number(amount),
+                receiptNo: receiptNo || '-'
+            };
+
+            receipts.unshift(newReceipt);
+            localStorage.setItem('receipts_data', JSON.stringify(receipts));
+            renderTable();
+            closeModal();
+        });
+
+        // 削除処理
+        window.deleteReceipt = function(id) {
+            receipts = receipts.filter(r => r.id !== id);
+            localStorage.setItem('receipts_data', JSON.stringify(receipts));
+            renderTable();
+        };
+
+        // 一覧描画
+        function renderTable(filter = '') {
+            receiptTableBody.innerHTML = '';
+            const filtered = receipts.filter(r => 
+                r.company.toLowerCase().includes(filter.toLowerCase()) || 
+                r.item.toLowerCase().includes(filter.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            let sum = 0;
+            filtered.forEach(r => {
+                sum += r.amount;
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
+                tr.innerHTML = `
+                    <td class="p-3 text-slate-600">${r.date}</td>
+                    <td class="p-3 font-medium text-slate-800">${escapeHtml(r.company)}</td>
+                    <td class="p-3 text-slate-600">${escapeHtml(r.item)}</td>
+                    <td class="p-3 font-bold text-slate-700">¥${r.amount.toLocaleString()}</td>
+                    <td class="p-3 text-slate-500 text-xs font-mono">${escapeHtml(r.receiptNo)}</td>
+                    <td class="p-3 text-right">
+                        <button onclick="deleteReceipt('${r.id}')" class="text-rose-500 hover:text-rose-700 p-1">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                `;
+                receiptTableBody.appendChild(tr);
+            });
+
+            totalCount.innerText = `${receipts.length}件`;
+            const totalSum = receipts.reduce((acc, cur) => acc + cur.amount, 0);
+            totalAmount.innerText = `¥${totalSum.toLocaleString()}`;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>"]/g, function(tag) {
+                const chars = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+                return chars[tag] || tag;
+            });
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            renderTable(e.target.value);
+        });
+
+        // スプレッドシート連携用CSV出力
+        exportCsvBtn.addEventListener('click', () => {
+            if (receipts.length === 0) {
+                showAlert('出力するデータがありません。');
+                return;
+            }
+
+            let csv = '\uFEFF購入日付,会社名,商品名,金額,レシート番号\n';
+            receipts.forEach(r => {
+                csv += `"${r.date}","${r.company}","${r.item}",${r.amount},"${r.receiptNo}"\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `receipts_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // 初期描画
+        renderTable();
+    </script>
+</body>
+</html>
